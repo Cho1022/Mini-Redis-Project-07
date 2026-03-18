@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from src.storage.expiration import ExpirationManager
 
@@ -18,7 +18,6 @@ class InMemoryStore:
 
     def set(self, key: str, value: str, ex: int | None = None) -> None:
         self._data[key] = value
-        # Redis-compatible default: plain SET removes existing TTL.
         self._expiration.persist(key)
         if ex is not None:
             if ex <= 0:
@@ -58,3 +57,18 @@ class InMemoryStore:
 
     def invalidate(self, key: str) -> int:
         return self.delete(key)
+
+    def snapshot(self) -> tuple[dict[str, str], dict[str, float]]:
+        for key in list(self._data.keys()):
+            self._evict_if_expired(key)
+        return dict(self._data), self._expiration.snapshot()
+
+    def load(self, data: dict[str, str], expires_at: dict[str, float]) -> None:
+        self._data = {str(key): str(value) for key, value in data.items()}
+        self._expiration.load(expires_at)
+        for key in list(self._data.keys()):
+            self._evict_if_expired(key)
+
+    def get_expire_at(self, key: str) -> float | None:
+        self._evict_if_expired(key)
+        return self._expiration.get_expire_at(key)

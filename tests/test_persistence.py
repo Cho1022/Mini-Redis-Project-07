@@ -1,4 +1,4 @@
-from pathlib import Path
+﻿from pathlib import Path
 
 from src.persistence.aof import AofEntry, AofPersistence
 from src.persistence.rdb import RdbPersistence

@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import time
 from typing import Callable
@@ -45,3 +45,24 @@ class ExpirationManager:
 
         self._expires_at.pop(key, None)
         return -2
+
+    def snapshot(self) -> dict[str, float]:
+        now = self._now_fn()
+        return {
+            key: expires_at
+            for key, expires_at in self._expires_at.items()
+            if expires_at > now
+        }
+
+    def load(self, expires_at: dict[str, float]) -> None:
+        now = self._now_fn()
+        self._expires_at = {
+            str(key): float(value)
+            for key, value in expires_at.items()
+            if float(value) > now
+        }
+
+    def get_expire_at(self, key: str) -> float | None:
+        if self.is_expired(key):
+            return None
+        return self._expires_at.get(key)

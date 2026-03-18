@@ -1,0 +1,55 @@
+﻿Mini Redis Completion Update
+
+추가 목적
+- 재시작 복구를 실제 서버 경로에 연결했다.
+- router 를 문서 수준이 아니라 dispatcher 판단 경로에 들어가게 만들었다.
+- 이제 persistence / cluster 는 다음 단계가 아니라, 최소 완성 형태로 실행 경로에 포함된다.
+
+이번 단계 핵심 변경
+1. restart recovery 연결
+- 서버 시작 시 data_dir 아래 appendonly.aof 가 있으면 우선 replay 한다.
+- aof 가 없으면 dump.rdb snapshot 을 로드한다.
+- SAVE 명령을 dispatcher 에 추가해서 현재 메모리 상태를 dump.rdb 로 저장할 수 있다.
+- write 명령 SET / DEL / EXPIRE 는 성공 후 appendonly.aof 에 기록된다.
+
+2. storage snapshot/load 지원
+- storage 가 현재 메모리 상태와 expiration metadata 를 export 할 수 있다.
+- restart 시 snapshot/aof 결과를 storage 로 다시 load 할 수 있다.
+- expired key 는 load 과정에서 걸러진다.
+
+3. cluster routing 구조 통합
+- ClusterCoordinator 를 추가했다.
+- dispatcher 는 key 기반 명령 전에 현재 노드가 해당 key owner 인지 확인할 수 있다.
+- 현재 기본 실행은 단일 노드라 항상 local 처리된다.
+- 다중 노드 구성이 들어오면 remote owner 에 대해 MOVED 에러를 반환할 수 있다.
+
+4. 실행 경로 변화
+- main.build_server() 가 storage + persistence + cluster + dispatcher + protocol + tcp server 를 조립한다.
+- python -m src.main --data-dir <dir> 로 persistence 파일 경로를 지정할 수 있다.
+
+추가/수정 파일
+- src/storage/expiration.py
+- src/storage/in_memory.py
+- src/storage/engine.py
+- src/persistence/manager.py
+- src/cluster/router.py
+- src/server/dispatcher.py
+- src/main.py
+- tests/integration/test_tcp_server_flow.py
+- tests/integration/test_dispatcher_flow.py
+
+새로 확인한 시나리오
+- 서버 재시작 후 GET 복구
+- SAVE 명령 snapshot 저장
+- AOF 기반 write path 기록
+- cluster routing 구조가 dispatcher 경로에 존재
+
+남은 작업
+1. cluster node 설정을 CLI/설정 파일로 받는 기능 보강
+2. SAVE 외 자동 snapshot 정책 추가
+3. AOF rewrite / compaction 추가
+4. MOVED 응답을 실제 multi-node demo 로 확장
+
+현재 상태 해석
+- 단일 노드 Mini Redis 의 핵심 기능 + 재시작 복구까지 연결됨
+- cluster 는 완전 분산 실행은 아니지만, 확장 구조가 실제 코드 경로에 들어간 상태

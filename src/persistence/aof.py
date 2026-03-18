@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 from dataclasses import dataclass
@@ -26,13 +26,6 @@ class ReplayState:
 
 
 class AofPersistence:
-    """
-    Append write commands and rebuild state by replaying them in order.
-
-    Each line is stored as JSON so parsing remains simple while still keeping
-    the mental model close to an append-only command log.
-    """
-
     def __init__(self, path: str | Path):
         self.path = Path(path)
 
@@ -67,15 +60,17 @@ class AofPersistence:
                 try:
                     record = json.loads(line)
                 except json.JSONDecodeError as exc:
-                    raise ValueError(
-                        f"Invalid AOF record at line {line_number}"
-                    ) from exc
+                    raise ValueError(f"Invalid AOF record at line {line_number}") from exc
 
                 command = str(record.get("command", "")).upper()
                 args = tuple(str(arg) for arg in record.get("args", []))
                 self._apply(AofEntry(command=command, args=args), data, expires_at)
 
         return ReplayState(data=data, expires_at=expires_at)
+
+    def reset(self) -> None:
+        if self.path.exists():
+            self.path.unlink()
 
     def _apply(
         self,

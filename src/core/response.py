@@ -20,7 +20,7 @@ class Response:
 
     @staticmethod
     def error(message: str) -> Error:
-        normalized = message if message.startswith("ERR ") else f"ERR {message}"
+        normalized = message if message.startswith("ERR ") or message.startswith("MOVED ") else f"ERR {message}"
         return Error(normalized)
 
 
