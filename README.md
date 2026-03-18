@@ -1,4 +1,4 @@
-<img width="1024" height="582" alt="image" src="https://github.com/user-attachments/assets/0427ea63-2a69-47ed-b190-1da64c90fb7b" /># Mini Redis
+# Mini Redis
 
 이번 프로젝트의 목표는 단순히 key-value 저장소를 만드는 것이 아니라, **Redis의 핵심 개념인 해시 테이블 기반 저장, TTL, RESP 프로토콜, TCP 서버 흐름, 영속성 확장 가능성**까지 직접 구현하고 설명할 수 있는 수준까지 도달하는 것이었습니다.
 
