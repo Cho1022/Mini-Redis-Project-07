@@ -23,3 +23,5 @@ Thumbs.db
 # Runtime data
 *.log
 data/snapshot.json
+.pytest_cache/
+pytest-cache-files-*
