@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DB Benchmark Graph</title>
+  <style>
+    :root {
+      --bg: #f4efe8;
+      --panel: #fffdf9;
+      --text: #1f1b18;
+      --muted: #6c6259;
+      --line: #ddd2c5;
+      --button: #2c2722;
+      --mongo: #2f7d4c;
+      --redis: #b03030;
+      --mini: #2f5fb7;
+      --shadow: 0 16px 40px rgba(63, 42, 27, 0.12);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Segoe UI", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(199, 95, 46, 0.14), transparent 26%),
+        linear-gradient(135deg, #f5efe7 0%, #eee4d8 48%, #f7f4ef 100%);
+    }
+
+    .wrap {
+      width: min(1040px, calc(100% - 32px));
+      margin: 36px auto;
+    }
+
+    .panel,
+    .chart-card {
+      background: var(--panel);
+      border: 1px solid rgba(221, 210, 197, 0.85);
+      border-radius: 24px;
+      box-shadow: var(--shadow);
+      padding: 24px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: clamp(2rem, 4vw, 3rem);
+      line-height: 1.05;
+    }
+
+    .sub {
+      margin: 0;
+      color: var(--muted);
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 14px;
+      margin-top: 20px;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    label {
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    input {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px 14px;
+      font-size: 1rem;
+      background: #fff;
+    }
+
+    .actions {
+      margin-top: 16px;
+    }
+
+    button {
+      border: 0;
+      border-radius: 999px;
+      padding: 12px 18px;
+      background: var(--button);
+      color: #fff;
+      font-size: 0.95rem;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: wait;
+    }
+
+    .status {
+      min-height: 24px;
+      margin-top: 14px;
+      color: var(--muted);
+    }
+
+    .charts {
+      display: grid;
+      gap: 18px;
+      margin-top: 22px;
+    }
+
+    .chart-title {
+      margin: 0 0 18px;
+      font-size: 1.15rem;
+      font-weight: 700;
+    }
+
+    .bars {
+      display: grid;
+      gap: 14px;
+    }
+
+    .bar-row {
+      display: grid;
+      grid-template-columns: 150px 1fr 100px;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .db-name {
+      font-weight: 700;
+    }
+
+    .bar-track {
+      width: 100%;
+      height: 22px;
+      border-radius: 999px;
+      background: #efe6db;
+      overflow: hidden;
+    }
+
+    .bar-fill {
+      height: 100%;
+      width: 0%;
+      border-radius: 999px;
+      transition: width 0.45s ease;
+    }
+
+    .bar-fill.mongo {
+      background: var(--mongo);
+    }
+
+    .bar-fill.redis {
+      background: var(--redis);
+    }
+
+    .bar-fill.mini {
+      background: var(--mini);
+    }
+
+    .time {
+      text-align: right;
+      font-weight: 700;
+    }
+
+    @media (max-width: 640px) {
+      .wrap {
+        width: min(100% - 20px, 1040px);
+        margin: 18px auto 28px;
+      }
+
+      .panel,
+      .chart-card {
+        padding: 18px;
+        border-radius: 18px;
+      }
+
+      .bar-row {
+        grid-template-columns: 1fr;
+      }
+
+      .time {
+        text-align: left;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="panel">
+      <h1>MongoDB vs Redis vs Mini Redis</h1>
+      <p class="sub">SET, GET 평균 시간만 그래프로 비교합니다.</p>
+
+      <div class="controls">
+        <div class="field">
+          <label for="count">반복 횟수</label>
+          <input id="count" type="number" min="1" value="100">
+        </div>
+        <div class="field">
+          <label for="warmup">워밍업 횟수</label>
+          <input id="warmup" type="number" min="0" value="30">
+        </div>
+        <div class="field">
+          <label for="redisPort">Redis 포트</label>
+          <input id="redisPort" type="number" min="1" value="6379">
+        </div>
+        <div class="field">
+          <label for="miniRedisPort">Mini Redis 포트</label>
+          <input id="miniRedisPort" type="number" min="1" value="6380">
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="runBtn">그래프 비교 실행</button>
+      </div>
+
+      <p class="status" id="status">`benchmark_api.py`와 Mini Redis 서버를 실행한 뒤 버튼을 눌러주세요.</p>
+    </section>
+
+    <section class="charts">
+      <div class="chart-card">
+        <h2 class="chart-title">SET</h2>
+        <div class="bars">
+          <div class="bar-row">
+            <div class="db-name">MongoDB</div>
+            <div class="bar-track"><div class="bar-fill mongo" id="setMongoBar"></div></div>
+            <div class="time" id="setMongoTime">-</div>
+          </div>
+          <div class="bar-row">
+            <div class="db-name">Redis</div>
+            <div class="bar-track"><div class="bar-fill redis" id="setRedisBar"></div></div>
+            <div class="time" id="setRedisTime">-</div>
+          </div>
+          <div class="bar-row">
+            <div class="db-name">Mini Redis</div>
+            <div class="bar-track"><div class="bar-fill mini" id="setMiniBar"></div></div>
+            <div class="time" id="setMiniTime">-</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="chart-card">
+        <h2 class="chart-title">GET</h2>
+        <div class="bars">
+          <div class="bar-row">
+            <div class="db-name">MongoDB</div>
+            <div class="bar-track"><div class="bar-fill mongo" id="getMongoBar"></div></div>
+            <div class="time" id="getMongoTime">-</div>
+          </div>
+          <div class="bar-row">
+            <div class="db-name">Redis</div>
+            <div class="bar-track"><div class="bar-fill redis" id="getRedisBar"></div></div>
+            <div class="time" id="getRedisTime">-</div>
+          </div>
+          <div class="bar-row">
+            <div class="db-name">Mini Redis</div>
+            <div class="bar-track"><div class="bar-fill mini" id="getMiniBar"></div></div>
+            <div class="time" id="getMiniTime">-</div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const status = document.getElementById("status");
+    const runBtn = document.getElementById("runBtn");
+
+    const barRefs = {
+      set: {
+        mongo: { bar: document.getElementById("setMongoBar"), time: document.getElementById("setMongoTime") },
+        redis: { bar: document.getElementById("setRedisBar"), time: document.getElementById("setRedisTime") },
+        mini_redis: { bar: document.getElementById("setMiniBar"), time: document.getElementById("setMiniTime") },
+      },
+      get: {
+        mongo: { bar: document.getElementById("getMongoBar"), time: document.getElementById("getMongoTime") },
+        redis: { bar: document.getElementById("getRedisBar"), time: document.getElementById("getRedisTime") },
+        mini_redis: { bar: document.getElementById("getMiniBar"), time: document.getElementById("getMiniTime") },
+      },
+    };
+
+    function setBusy(isBusy, message) {
+      runBtn.disabled = isBusy;
+      status.textContent = message;
+    }
+
+    function getInputs() {
+      return {
+        count: Number(document.getElementById("count").value || 1),
+        warmup: Number(document.getElementById("warmup").value || 0),
+        redisPort: Number(document.getElementById("redisPort").value || 6379),
+        miniRedisPort: Number(document.getElementById("miniRedisPort").value || 6380),
+      };
+    }
+
+    async function fetchJson(url) {
+      const response = await fetch(url);
+      const body = await response.json();
+
+      if (!response.ok || body.result !== "success") {
+        throw new Error(body.message || "벤치마크 실행에 실패했습니다.");
+      }
+
+      return body;
+    }
+
+    function renderGraph(section, values) {
+      const max = Math.max(values.mongo, values.redis, values.mini_redis, 0.0001);
+
+      for (const [key, value] of Object.entries(values)) {
+        barRefs[section][key].bar.style.width = `${(value / max) * 100}%`;
+        barRefs[section][key].time.textContent = `${value.toFixed(4)} ms`;
+      }
+    }
+
+    async function runBenchmark() {
+      const { count, warmup, redisPort, miniRedisPort } = getInputs();
+      if (count < 1) {
+        throw new Error("반복 횟수는 1 이상이어야 합니다.");
+      }
+      if (warmup < 0) {
+        throw new Error("워밍업 횟수는 0 이상이어야 합니다.");
+      }
+
+      const data = await fetchJson(
+        `http://127.0.0.1:5003/db-benchmark?count=${encodeURIComponent(count)}&warmup=${encodeURIComponent(warmup)}&redis_port=${encodeURIComponent(redisPort)}&mini_redis_port=${encodeURIComponent(miniRedisPort)}`
+      );
+      const benchmark = data.benchmark;
+
+      renderGraph("set", {
+        mongo: benchmark.set.mongo.avg,
+        redis: benchmark.set.redis.avg,
+        mini_redis: benchmark.set.mini_redis.avg,
+      });
+
+      renderGraph("get", {
+        mongo: benchmark.get.mongo.avg,
+        redis: benchmark.get.redis.avg,
+        mini_redis: benchmark.get.mini_redis.avg,
+      });
+    }
+
+    runBtn.addEventListener("click", async () => {
+      try {
+        setBusy(true, "그래프를 계산 중입니다...");
+        await runBenchmark();
+        setBusy(false, "비교가 완료되었습니다.");
+      } catch (error) {
+        setBusy(false, `오류: ${error.message}`);
+      }
+    });
+  </script>
+</body>
+</html>
