@@ -25,3 +25,5 @@ Thumbs.db
 data/snapshot.json
 .pytest_cache/
 pytest-cache-files-*
+.tmp_env_run/
+.tmp_pytest/

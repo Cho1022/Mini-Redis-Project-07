@@ -114,6 +114,7 @@ class AsyncRedisServer:
 
     async def _run_periodic_snapshot(self) -> None:
         try:
+            await self._run_snapshot_once(reason="startup")
             while True:
                 await asyncio.sleep(self._snapshot_interval)
                 await self._run_snapshot_once(reason=f"interval={self._snapshot_interval}s")

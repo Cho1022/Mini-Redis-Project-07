@@ -44,12 +44,23 @@ class AofPersistence:
         for entry in entries:
             self.append(entry.command, *entry.args)
 
-    def replay(self) -> ReplayState:
+    def replay(
+        self,
+        base_data: dict[str, str] | None = None,
+        base_expires_at: dict[str, float] | None = None,
+    ) -> ReplayState:
         if not self.path.exists():
-            return ReplayState(data={}, expires_at={})
+            return ReplayState(
+                data=dict(base_data or {}),
+                expires_at=dict(base_expires_at or {}),
+            )
 
-        data: dict[str, str] = {}
-        expires_at: dict[str, float] = {}
+        data: dict[str, str] = dict(base_data or {})
+        expires_at: dict[str, float] = {
+            key: value
+            for key, value in dict(base_expires_at or {}).items()
+            if key in data
+        }
 
         with self.path.open("r", encoding="utf-8") as file:
             for line_number, line in enumerate(file, start=1):

@@ -1,11 +1,15 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 
 from src.persistence.aof import AofPersistence
 from src.persistence.rdb import RdbPersistence
 from src.storage.engine import StorageEngine
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,18 +35,31 @@ class PersistenceManager:
         self._aof = AofPersistence(config.aof_path)
 
     def restore(self) -> None:
-        if self._config.aof_path.exists():
-            state = self._aof.replay()
-            self._storage.load_snapshot(state.data, state.expires_at)
-            return
-
         snapshot = self._rdb.load()
-        self._storage.load_snapshot(snapshot.data, snapshot.expires_at)
+        LOGGER.info(
+            "Restored from RDB: path=%s keys=%d",
+            self._config.rdb_path.resolve(),
+            len(snapshot.data),
+        )
+
+        state = self._aof.replay(snapshot.data, snapshot.expires_at)
+        self._storage.load_snapshot(state.data, state.expires_at)
+        LOGGER.info(
+            "Applied AOF replay: path=%s keys=%d",
+            self._config.aof_path.resolve(),
+            len(state.data),
+        )
 
     def snapshot(self) -> Path:
         data, expires_at = self._storage.snapshot()
         path = self._rdb.save(data, expires_at)
         self._aof.reset()
+        LOGGER.info(
+            "Saved RDB snapshot: path=%s keys=%d ttl_keys=%d",
+            path.resolve(),
+            len(data),
+            len(expires_at),
+        )
         return path
 
     def record_write(self, command: str, *args: str) -> None:

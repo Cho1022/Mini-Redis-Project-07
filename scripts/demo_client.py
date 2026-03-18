@@ -24,13 +24,53 @@ def run_commands(host: str, port: int, commands: Iterable[list[str]]) -> list[by
     return responses
 
 
+def run_console(host: str, port: int) -> None:
+    print(f"Connected to Mini Redis console at {host}:{port}")
+    print("Enter commands like: PING, SET name kim, GET name")
+    print("Type 'exit' or 'quit' to close.")
+
+    with socket.create_connection((host, port), timeout=5) as sock:
+        while True:
+            try:
+                raw = input("mini-redis> ").strip()
+            except EOFError:
+                print()
+                break
+            except KeyboardInterrupt:
+                print()
+                break
+
+            if not raw:
+                continue
+
+            lowered = raw.lower()
+            if lowered in {"exit", "quit"}:
+                break
+
+            parts = raw.split()
+            try:
+                payload = encode_command(*parts)
+                sock.sendall(payload)
+                response = sock.recv(4096)
+            except OSError as exc:
+                print(f"(error) {exc}")
+                break
+
+            print(response.decode("utf-8", errors="replace").rstrip())
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Send RESP commands to the Mini Redis server.")
     parser.add_argument("--host", default="127.0.0.1", help="Server host.")
     parser.add_argument("--port", type=int, default=6379, help="Server port.")
     parser.add_argument(
+        "--console",
+        action="store_true",
+        help="Run an interactive console instead of sending one-shot commands.",
+    )
+    parser.add_argument(
         "commands",
-        nargs="+",
+        nargs="*",
         help="Commands separated by ';' and parts separated by spaces. Example: \"PING\" \"SET user:1 kim\"",
     )
     return parser.parse_args()
@@ -38,6 +78,13 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    if args.console:
+        run_console(args.host, args.port)
+        return
+
+    if not args.commands:
+        raise SystemExit("Provide at least one command or use --console.")
+
     command_groups = [segment.split() for segment in args.commands]
     responses = run_commands(args.host, args.port, command_groups)
     for response in responses:

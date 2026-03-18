@@ -18,12 +18,20 @@ DEFAULT_MINI_REDIS_HOST = "127.0.0.1"
 DEFAULT_MINI_REDIS_PORT = 6380
 
 
-def build_key(index):
-    return f"{PREFIX}{index}"
+def render_template(template, index, default_prefix):
+    if template and "{i}" in template:
+        return template.replace("{i}", str(index))
+
+    base = template if template else default_prefix
+    return f"{base}{index}"
 
 
-def build_value(index):
-    return f"value-{index}"
+def build_key(index, key_template=None):
+    return render_template(key_template, index, PREFIX)
+
+
+def build_value(index, value_template=None):
+    return render_template(value_template, index, "value-")
 
 
 def create_redis_client(host=DEFAULT_REDIS_HOST, port=DEFAULT_REDIS_PORT):
@@ -89,27 +97,29 @@ def recv_until_crlf(sock):
             return b"".join(chunks)
 
 
-def cleanup(count, redis_client, mini_redis_host, mini_redis_port):
-    MONGO_COLLECTION.delete_many({"key": {"$regex": f"^{PREFIX}"}})
+def cleanup(count, redis_client, mini_redis_host, mini_redis_port, key_template=None):
+    keys = [build_key(index, key_template) for index in range(count)]
 
-    for index in range(count):
-        key = build_key(index)
+    if keys:
+        MONGO_COLLECTION.delete_many({"key": {"$in": keys}})
+
+    for key in keys:
         redis_client.delete(key)
 
     with socket.create_connection((mini_redis_host, mini_redis_port), timeout=5) as sock:
         sock.settimeout(5)
-        for index in range(count):
-            sock.sendall(encode_command("DEL", build_key(index)))
+        for key in keys:
+            sock.sendall(encode_command("DEL", key))
             recv_resp(sock)
 
 
-def prepare_get_data(count, redis_client, mini_redis_host, mini_redis_port):
+def prepare_get_data(count, redis_client, mini_redis_host, mini_redis_port, key_template=None, value_template=None):
     with socket.create_connection((mini_redis_host, mini_redis_port), timeout=5) as sock:
         sock.settimeout(5)
 
         for index in range(count):
-            key = build_key(index)
-            value = build_value(index)
+            key = build_key(index, key_template)
+            value = build_value(index, value_template)
 
             redis_client.set(key, value)
             MONGO_COLLECTION.update_one(
@@ -122,12 +132,12 @@ def prepare_get_data(count, redis_client, mini_redis_host, mini_redis_port):
             recv_resp(sock)
 
 
-def benchmark_set_mongo(count):
+def benchmark_set_mongo(count, key_template=None, value_template=None):
     samples = []
 
     for index in range(count):
-        key = build_key(index)
-        value = build_value(index)
+        key = build_key(index, key_template)
+        value = build_value(index, value_template)
 
         start = time.perf_counter()
         MONGO_COLLECTION.update_one(
@@ -140,23 +150,23 @@ def benchmark_set_mongo(count):
     return samples
 
 
-def benchmark_get_mongo(count):
+def benchmark_get_mongo(count, key_template=None):
     samples = []
 
     for index in range(count):
         start = time.perf_counter()
-        MONGO_COLLECTION.find_one({"key": build_key(index)}, {"_id": 0, "value": 1})
+        MONGO_COLLECTION.find_one({"key": build_key(index, key_template)}, {"_id": 0, "value": 1})
         samples.append((time.perf_counter() - start) * 1000)
 
     return samples
 
 
-def benchmark_set_redis(count, redis_client):
+def benchmark_set_redis(count, redis_client, key_template=None, value_template=None):
     samples = []
 
     for index in range(count):
-        key = build_key(index)
-        value = build_value(index)
+        key = build_key(index, key_template)
+        value = build_value(index, value_template)
 
         start = time.perf_counter()
         redis_client.set(key, value)
@@ -165,25 +175,25 @@ def benchmark_set_redis(count, redis_client):
     return samples
 
 
-def benchmark_get_redis(count, redis_client):
+def benchmark_get_redis(count, redis_client, key_template=None):
     samples = []
 
     for index in range(count):
         start = time.perf_counter()
-        redis_client.get(build_key(index))
+        redis_client.get(build_key(index, key_template))
         samples.append((time.perf_counter() - start) * 1000)
 
     return samples
 
 
-def benchmark_set_mini_redis(count, host, port):
+def benchmark_set_mini_redis(count, host, port, key_template=None, value_template=None):
     samples = []
 
     with socket.create_connection((host, port), timeout=5) as sock:
         sock.settimeout(5)
 
         for index in range(count):
-            payload = encode_command("SET", build_key(index), build_value(index))
+            payload = encode_command("SET", build_key(index, key_template), build_value(index, value_template))
             start = time.perf_counter()
             sock.sendall(payload)
             recv_resp(sock)
@@ -192,14 +202,14 @@ def benchmark_set_mini_redis(count, host, port):
     return samples
 
 
-def benchmark_get_mini_redis(count, host, port):
+def benchmark_get_mini_redis(count, host, port, key_template=None):
     samples = []
 
     with socket.create_connection((host, port), timeout=5) as sock:
         sock.settimeout(5)
 
         for index in range(count):
-            payload = encode_command("GET", build_key(index))
+            payload = encode_command("GET", build_key(index, key_template))
             start = time.perf_counter()
             sock.sendall(payload)
             recv_resp(sock)
@@ -229,30 +239,58 @@ def run_benchmark(
     redis_port=DEFAULT_REDIS_PORT,
     mini_redis_host=DEFAULT_MINI_REDIS_HOST,
     mini_redis_port=DEFAULT_MINI_REDIS_PORT,
+    key_template=None,
+    value_template=None,
 ):
     total_count = warmup_count + benchmark_count
     redis_client = create_redis_client(redis_host, redis_port)
 
-    cleanup(total_count, redis_client, mini_redis_host, mini_redis_port)
-    prepare_get_data(total_count, redis_client, mini_redis_host, mini_redis_port)
+    prepare_get_data(
+        total_count,
+        redis_client,
+        mini_redis_host,
+        mini_redis_port,
+        key_template=key_template,
+        value_template=value_template,
+    )
 
-    benchmark_set_mongo(warmup_count)
-    benchmark_set_redis(warmup_count, redis_client)
-    benchmark_set_mini_redis(warmup_count, mini_redis_host, mini_redis_port)
+    benchmark_set_mongo(warmup_count, key_template=key_template, value_template=value_template)
+    benchmark_set_redis(warmup_count, redis_client, key_template=key_template, value_template=value_template)
+    benchmark_set_mini_redis(
+        warmup_count,
+        mini_redis_host,
+        mini_redis_port,
+        key_template=key_template,
+        value_template=value_template,
+    )
 
-    benchmark_get_mongo(warmup_count)
-    benchmark_get_redis(warmup_count, redis_client)
-    benchmark_get_mini_redis(warmup_count, mini_redis_host, mini_redis_port)
+    benchmark_get_mongo(warmup_count, key_template=key_template)
+    benchmark_get_redis(warmup_count, redis_client, key_template=key_template)
+    benchmark_get_mini_redis(warmup_count, mini_redis_host, mini_redis_port, key_template=key_template)
 
-    mongo_set_samples = benchmark_set_mongo(benchmark_count)
-    redis_set_samples = benchmark_set_redis(benchmark_count, redis_client)
-    mini_redis_set_samples = benchmark_set_mini_redis(benchmark_count, mini_redis_host, mini_redis_port)
+    mongo_set_samples = benchmark_set_mongo(benchmark_count, key_template=key_template, value_template=value_template)
+    redis_set_samples = benchmark_set_redis(
+        benchmark_count,
+        redis_client,
+        key_template=key_template,
+        value_template=value_template,
+    )
+    mini_redis_set_samples = benchmark_set_mini_redis(
+        benchmark_count,
+        mini_redis_host,
+        mini_redis_port,
+        key_template=key_template,
+        value_template=value_template,
+    )
 
-    mongo_get_samples = benchmark_get_mongo(benchmark_count)
-    redis_get_samples = benchmark_get_redis(benchmark_count, redis_client)
-    mini_redis_get_samples = benchmark_get_mini_redis(benchmark_count, mini_redis_host, mini_redis_port)
-
-    cleanup(total_count, redis_client, mini_redis_host, mini_redis_port)
+    mongo_get_samples = benchmark_get_mongo(benchmark_count, key_template=key_template)
+    redis_get_samples = benchmark_get_redis(benchmark_count, redis_client, key_template=key_template)
+    mini_redis_get_samples = benchmark_get_mini_redis(
+        benchmark_count,
+        mini_redis_host,
+        mini_redis_port,
+        key_template=key_template,
+    )
 
     return {
         "warmup_count": warmup_count,
@@ -261,6 +299,8 @@ def run_benchmark(
         "redis_port": redis_port,
         "mini_redis_host": mini_redis_host,
         "mini_redis_port": mini_redis_port,
+        "key_template": key_template or PREFIX,
+        "value_template": value_template or "value-",
         "set": {
             "mongo": build_summary(mongo_set_samples),
             "redis": build_summary(redis_set_samples),
@@ -271,4 +311,34 @@ def run_benchmark(
             "redis": build_summary(redis_get_samples),
             "mini_redis": build_summary(mini_redis_get_samples),
         },
+    }
+
+
+def run_cleanup(
+    warmup_count=WARMUP_COUNT,
+    benchmark_count=BENCHMARK_COUNT,
+    redis_host=DEFAULT_REDIS_HOST,
+    redis_port=DEFAULT_REDIS_PORT,
+    mini_redis_host=DEFAULT_MINI_REDIS_HOST,
+    mini_redis_port=DEFAULT_MINI_REDIS_PORT,
+    key_template=None,
+):
+    total_count = warmup_count + benchmark_count
+    redis_client = create_redis_client(redis_host, redis_port)
+
+    cleanup(
+        total_count,
+        redis_client,
+        mini_redis_host,
+        mini_redis_port,
+        key_template=key_template,
+    )
+
+    return {
+        "deleted_count": total_count,
+        "key_template": key_template or PREFIX,
+        "redis_host": redis_host,
+        "redis_port": redis_port,
+        "mini_redis_host": mini_redis_host,
+        "mini_redis_port": mini_redis_port,
     }

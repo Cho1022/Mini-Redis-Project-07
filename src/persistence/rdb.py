@@ -56,7 +56,15 @@ class RdbPersistence:
             return Snapshot(data={}, expires_at={})
 
         with self.path.open("r", encoding="utf-8") as file:
-            raw = json.load(file)
+            content = file.read().strip()
+
+        if not content:
+            return Snapshot(data={}, expires_at={})
+
+        try:
+            raw = json.loads(content)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"Invalid RDB snapshot format in {self.path}") from exc
 
         data = raw.get("data", {})
         expires_at = raw.get("expires_at", {})

@@ -12,6 +12,7 @@
       --muted: #6c6259;
       --line: #ddd2c5;
       --button: #2c2722;
+      --button-alt: #8b5e34;
       --mongo: #2f7d4c;
       --redis: #b03030;
       --mini: #2f5fb7;
@@ -57,6 +58,12 @@
       color: var(--muted);
     }
 
+    .hint {
+      margin: 12px 0 0;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
     .controls {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -85,6 +92,9 @@
     }
 
     .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
       margin-top: 16px;
     }
 
@@ -96,6 +106,10 @@
       color: #fff;
       font-size: 0.95rem;
       cursor: pointer;
+    }
+
+    button.secondary {
+      background: var(--button-alt);
     }
 
     button:disabled {
@@ -195,32 +209,42 @@
   <div class="wrap">
     <section class="panel">
       <h1>MongoDB vs Redis vs Mini Redis</h1>
-      <p class="sub">SET, GET 평균 시간만 그래프로 비교합니다.</p>
+      <p class="sub">SET, GET average time comparison graph</p>
+      <p class="hint">`{i}` is replaced with the current index. Example: `bench:{i}` becomes `bench:0`, `bench:1`...</p>
 
       <div class="controls">
         <div class="field">
-          <label for="count">반복 횟수</label>
+          <label for="count">Count</label>
           <input id="count" type="number" min="1" value="100">
         </div>
         <div class="field">
-          <label for="warmup">워밍업 횟수</label>
+          <label for="warmup">Warmup</label>
           <input id="warmup" type="number" min="0" value="30">
         </div>
         <div class="field">
-          <label for="redisPort">Redis 포트</label>
+          <label for="redisPort">Redis Port</label>
           <input id="redisPort" type="number" min="1" value="6379">
         </div>
         <div class="field">
-          <label for="miniRedisPort">Mini Redis 포트</label>
+          <label for="miniRedisPort">Mini Redis Port</label>
           <input id="miniRedisPort" type="number" min="1" value="6380">
+        </div>
+        <div class="field">
+          <label for="keyTemplate">Key Template</label>
+          <input id="keyTemplate" type="text" value="bench:{i}" placeholder="example:key:{i}">
+        </div>
+        <div class="field">
+          <label for="valueTemplate">Value Template</label>
+          <input id="valueTemplate" type="text" value="value-{i}" placeholder="example:value:{i}">
         </div>
       </div>
 
       <div class="actions">
-        <button id="runBtn">그래프 비교 실행</button>
+        <button id="runBtn">Run Benchmark</button>
+        <button id="cleanupBtn" class="secondary">Run Cleanup</button>
       </div>
 
-      <p class="status" id="status">`benchmark_api.py`와 Mini Redis 서버를 실행한 뒤 버튼을 눌러주세요.</p>
+      <p class="status" id="status">Start `benchmark_api.py` and Mini Redis server, then run benchmark or cleanup.</p>
     </section>
 
     <section class="charts">
@@ -271,6 +295,7 @@
   <script>
     const status = document.getElementById("status");
     const runBtn = document.getElementById("runBtn");
+    const cleanupBtn = document.getElementById("cleanupBtn");
 
     const barRefs = {
       set: {
@@ -287,6 +312,7 @@
 
     function setBusy(isBusy, message) {
       runBtn.disabled = isBusy;
+      cleanupBtn.disabled = isBusy;
       status.textContent = message;
     }
 
@@ -296,15 +322,21 @@
         warmup: Number(document.getElementById("warmup").value || 0),
         redisPort: Number(document.getElementById("redisPort").value || 6379),
         miniRedisPort: Number(document.getElementById("miniRedisPort").value || 6380),
+        keyTemplate: document.getElementById("keyTemplate").value || "bench:{i}",
+        valueTemplate: document.getElementById("valueTemplate").value || "value-{i}",
       };
     }
 
-    async function fetchJson(url) {
-      const response = await fetch(url);
+    function buildQuery(params) {
+      return new URLSearchParams(params).toString();
+    }
+
+    async function fetchJson(url, options = {}) {
+      const response = await fetch(url, options);
       const body = await response.json();
 
       if (!response.ok || body.result !== "success") {
-        throw new Error(body.message || "벤치마크 실행에 실패했습니다.");
+        throw new Error(body.message || "Request failed.");
       }
 
       return body;
@@ -319,18 +351,30 @@
       }
     }
 
-    async function runBenchmark() {
-      const { count, warmup, redisPort, miniRedisPort } = getInputs();
+    function validateInputs(count, warmup) {
       if (count < 1) {
-        throw new Error("반복 횟수는 1 이상이어야 합니다.");
-      }
-      if (warmup < 0) {
-        throw new Error("워밍업 횟수는 0 이상이어야 합니다.");
+        throw new Error("Count must be 1 or more.");
       }
 
-      const data = await fetchJson(
-        `http://127.0.0.1:5003/db-benchmark?count=${encodeURIComponent(count)}&warmup=${encodeURIComponent(warmup)}&redis_port=${encodeURIComponent(redisPort)}&mini_redis_port=${encodeURIComponent(miniRedisPort)}`
-      );
+      if (warmup < 0) {
+        throw new Error("Warmup must be 0 or more.");
+      }
+    }
+
+    async function runBenchmark() {
+      const { count, warmup, redisPort, miniRedisPort, keyTemplate, valueTemplate } = getInputs();
+      validateInputs(count, warmup);
+
+      const query = buildQuery({
+        count,
+        warmup,
+        redis_port: redisPort,
+        mini_redis_port: miniRedisPort,
+        key_template: keyTemplate,
+        value_template: valueTemplate,
+      });
+
+      const data = await fetchJson(`http://127.0.0.1:5003/db-benchmark?${query}`);
       const benchmark = data.benchmark;
 
       renderGraph("set", {
@@ -346,14 +390,47 @@
       });
     }
 
+    async function runCleanup() {
+      const { count, warmup, redisPort, miniRedisPort, keyTemplate, valueTemplate } = getInputs();
+      validateInputs(count, warmup);
+
+      const query = buildQuery({
+        count,
+        warmup,
+        redis_port: redisPort,
+        mini_redis_port: miniRedisPort,
+        key_template: keyTemplate,
+        value_template: valueTemplate,
+      });
+
+      const data = await fetchJson(`http://127.0.0.1:5003/db-cleanup?${query}`, {
+        method: "POST",
+      });
+
+      status.textContent = `Cleanup completed for ${data.cleanup.deleted_count} keys.`;
+    }
+
     runBtn.addEventListener("click", async () => {
       try {
-        setBusy(true, "그래프를 계산 중입니다...");
+        setBusy(true, "Running benchmark...");
         await runBenchmark();
-        setBusy(false, "비교가 완료되었습니다.");
+        setBusy(false, "Benchmark completed.");
       } catch (error) {
-        setBusy(false, `오류: ${error.message}`);
+        setBusy(false, `Error: ${error.message}`);
       }
+    });
+
+    cleanupBtn.addEventListener("click", async () => {
+      try {
+        setBusy(true, "Running cleanup...");
+        await runCleanup();
+      } catch (error) {
+        setBusy(false, `Error: ${error.message}`);
+        return;
+      }
+
+      runBtn.disabled = false;
+      cleanupBtn.disabled = false;
     });
   </script>
 </body>
