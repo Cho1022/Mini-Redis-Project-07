@@ -1,3 +1,5 @@
+﻿from __future__ import annotations
+
 from src.core.command import Command
 from src.core.response import Response
 from src.storage.engine import StorageEngine
@@ -8,7 +10,7 @@ class Dispatcher:
         self._storage = storage
 
     def dispatch(self, command: Command) -> Response:
-        name = command.name.upper()
+        name = command.normalized_name()
         args = command.args
 
         try:
@@ -56,8 +58,12 @@ class Dispatcher:
         self._ensure_arity("EXPIRE", args, 2)
         try:
             seconds = int(args[1])
-        except ValueError:
-            return Response.error("value is not an integer or out of range")
+        except ValueError as exc:
+            raise ValueError("value is not an integer or out of range") from exc
+
+        if seconds <= 0:
+            raise ValueError("value is not an integer or out of range")
+
         return Response.integer(self._storage.expire(args[0], seconds))
 
     def _dispatch_ttl(self, args: list[str]) -> Response:

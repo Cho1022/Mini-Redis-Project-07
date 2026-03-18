@@ -2,20 +2,15 @@
 
 from dataclasses import dataclass
 
-try:
-    from src.core.command import Command
-except ImportError:
-    @dataclass(slots=True)
-    class Command:
-        name: str
-        args: list[str]
+from src.core.command import Command
+from src.core.exceptions import NeedMoreData, ProtocolError
 
 
-class RespProtocolError(Exception):
+class RespProtocolError(ProtocolError):
     """Raised when the incoming bytes are not valid RESP."""
 
 
-class IncompleteRESPError(RespProtocolError):
+class IncompleteRESPError(NeedMoreData):
     """Raised when the current TCP buffer does not contain a full command yet."""
 
 
@@ -29,6 +24,10 @@ class RespParser:
     """Parse a RESP request as an array of bulk strings."""
 
     CRLF = b"\r\n"
+
+    def parse(self, raw: bytes) -> tuple[Command, int]:
+        result = self.parse_one(raw)
+        return result.command, result.consumed
 
     def parse_command(self, raw: bytes) -> Command:
         result = self.parse_one(raw)

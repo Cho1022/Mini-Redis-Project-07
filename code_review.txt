@@ -1,0 +1,62 @@
+﻿Mini Redis Code Review
+
+수정 목적
+- 팀원이 따로 구현한 storage, protocol, server 코드를 하나의 실행 흐름으로 연결했다.
+- 지원 명령은 PING, SET, GET, DEL, EXISTS, EXPIRE, TTL 로 맞췄다.
+- main.py 에서 바로 서버 실행이 가능하도록 진입점을 추가했다.
+
+수정 파일
+- src/core/command.py
+- src/core/response.py
+- src/core/exceptions.py
+- src/protocol/resp_parser.py
+- src/protocol/resp_encoder.py
+- src/server/dispatcher.py
+- src/server/tcp_server.py
+- src/main.py
+- tests/integration/test_dispatcher_flow.py
+- tests/integration/test_tcp_server_flow.py
+
+리팩토링 핵심
+1. core 계약 정리
+- Command 객체에 normalized_name, arity 검증 기반을 추가했다.
+- Response 계층을 실제 타입으로 만들고 simple string, bulk string, integer, error, null bulk string 생성 경로를 통일했다.
+- parser 와 tcp_server 가 공통으로 쓰는 ProtocolError / NeedMoreData 예외를 추가했다.
+
+2. protocol-server 연결 정리
+- parser 에 parse() 를 추가해 tcp_server 가 buffer 기반으로 바로 소비할 수 있게 했다.
+- parse_command() 는 여전히 단일 명령 검증용으로 유지했다.
+- encoder 는 core.response 타입을 기준으로 RESP 바이트를 생성하도록 정리했다.
+
+3. dispatcher 정리
+- storage 와 직접 연결되는 명령을 PING/SET/GET/DEL/EXISTS/EXPIRE/TTL 로 고정했다.
+- wrong arity, integer parse 실패, unknown command 를 일관된 ERR 응답으로 반환하게 맞췄다.
+
+4. tcp server 흐름 완성
+- recv -> parse -> dispatch -> encode -> send 흐름을 AsyncRedisServer.handle_client 안에서 완성했다.
+- partial read 는 NeedMoreData 로 버퍼 유지, malformed request 는 에러 응답 후 버퍼 폐기 방식으로 정리했다.
+- start(), close(), port 프로퍼티를 추가해 통합 테스트와 실제 실행 둘 다 지원하게 했다.
+
+5. 실행 진입점 추가
+- src.main.build_server() 로 조립 로직을 분리했다.
+- python -m src.main --host 127.0.0.1 --port 6379 로 실행 가능하게 했다.
+
+리뷰 결과
+- 발견된 blocker 는 모두 이번 리팩토링에서 해소했다.
+- 남은 리스크는 기능 누락보다 운영 측면에 가깝다.
+
+남은 리스크
+1. 현재 서버는 연결별 직렬 처리라서 고부하 상황 최적화는 아직 안 되어 있다.
+2. persistence 는 현재 요청 흐름에 연결하지 않았고, 별도 save/load 전략으로만 유지된다.
+3. graceful shutdown, signal handling, structured logging 은 아직 최소 수준이다.
+4. EXPIRE 는 양수 초만 허용한다. Redis 세부 정책과 100% 동일한 동작까지는 아직 맞추지 않았다.
+
+권장 다음 작업
+1. src/core 와 protocol 기준으로 dispatcher 단위 테스트를 더 늘린다.
+2. persistence 를 dispatcher 에 선택적으로 주입해 SAVE 또는 startup restore 흐름을 붙인다.
+3. tcp_server 에 invalid request, multiple commands in one buffer, fragmented socket input 케이스를 더 추가한다.
+4. main 실행 시 환경변수 또는 설정 파일 기반 포트 주입을 추가한다.
+
+실행 확인 항목
+- 단위 테스트: protocol, storage
+- 통합 테스트: dispatcher 연결, tcp socket end-to-end 흐름
