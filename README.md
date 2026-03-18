@@ -84,8 +84,8 @@ persistence/rdb.py
 persistence/aof.py
 cluster/router.py
 즉 현재 구조는 단일 서버 기반 Mini Redis 코어를 구현하고, 영속성과 확장성은 모듈 단위로 준비한 구조입니다.
-
-4. 역할 분담
+```
+# 4. 역할 분담
 1번. 서버 흐름 담당
 담당 파일
 server/tcp_server.py
