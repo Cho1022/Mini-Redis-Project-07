@@ -86,94 +86,78 @@ cluster/router.py
 즉 현재 구조는 단일 서버 기반 Mini Redis 코어를 구현하고, 영속성과 확장성은 모듈 단위로 준비한 구조입니다.
 ```
 # 4. 역할 분담
-1번. 서버 흐름 담당
+## 1. 서버 흐름 담당
 담당 파일
-server/tcp_server.py
-server/dispatcher.py
-역할
-클라이언트 TCP 연결 수락
-요청 바이트 수신
-parser로 요청 전달
-dispatcher를 통해 storage와 연결
-응답을 다시 encoder를 통해 클라이언트로 전송
-예외 발생 시 서버 전체가 종료되지 않도록 보호
-동시성 처리 구조 설명
-핵심 책임
-서버의 입구
-요청 처리 흐름 제어
-명령 하나가 끝까지 실행되도록 연결
-발표 포인트
-“클라이언트 요청을 받아 내부 실행 흐름으로 전달하는 역할”
-“동시성 문제를 줄이기 위해 단일 이벤트 루프 기반 비동기 구조를 사용했다”
-구현 평가
-서버 흐름은 전체 구조에서 가장 중요한 연결부였고, 현재 recv -> parse -> dispatch -> encode -> send 흐름이 통합 테스트 수준에서 확인됩니다. 특히 fragmented request, multiple commands in one buffer 등 실제 네트워크 상황을 고려한 처리가 잘 들어가 있다는 점이 강점입니다.
+- `server/tcp_server.py`
+- `server/dispatcher.py`
 
-2번. 프로토콜 담당
-담당 파일
-protocol/resp_parser.py
-protocol/resp_encoder.py
 역할
-RESP 요청 형식 파싱
-바이트 데이터를 Command 객체로 변환
-내부 Response를 RESP 응답 형식으로 인코딩
-잘못된 프로토콜 형식 검증
-Redis 명령 형식을 어떻게 해석하는지 설명
+- `클라이언트 TCP 연결 수락`
+- `요청 바이트 수신`
+- `parser로 요청 전달`
+- `dispatcher를 통해 storage와 연결`
+- `응답을 다시 encoder를 통해 클라이언트로 전송`
+- `예외 발생 시 서버 전체가 종료되지 않도록 보호`
+- `동시성 처리 구조 설명`
+  
 핵심 책임
-클라이언트와 서버 사이의 대화 규칙 구현
-요청/응답 번역
-발표 포인트
-“RESP는 Redis가 사용하는 프로토콜”
-“parser는 요청을 내부 명령 객체로 바꾸고, encoder는 실행 결과를 RESP 형식으로 바꾼다”
-구현 평가
-RESP parser/encoder는 Mini Redis가 “Redis처럼 보이게 만드는” 핵심 요소였습니다. 단순 문자열 처리가 아니라 RESP bulk string, integer, error, null bulk string까지 다루고 있어 교육용 Mini Redis로서 완성도를 높여줍니다. 특히 parser가 malformed input과 incomplete buffer를 구분하는 점이 좋았습니다.
+- `서버의 입구`
+- `요청 처리 흐름 제어`
+- `명령 하나가 끝까지 실행되도록 연결`
 
-3번. 저장소/TTL 담당
-담당 파일
-storage/engine.py
-storage/in_memory.py
-storage/expiration.py
-역할
-실제 key-value 저장
-SET, GET, DEL, EXISTS 구현
-TTL 설정 및 만료 처리
-invalidate 처리
-lazy expiration 로직 구현
-해시 테이블 기반 저장 구조 설명
-핵심 책임
-Mini Redis의 핵심 로직
-실제 데이터 저장과 조회
-만료/삭제/무효화 정책
-발표 포인트
-“해시 테이블(Map/dict) 기반으로 빠르게 조회할 수 있게 구현했다”
-“만료된 키는 조회 시 확인하고 제거하는 방식으로 처리했다”
-구현 평가
-이 영역이 프로젝트의 중심이었고, 실제로 Redis다운 느낌을 만드는 핵심이었습니다. Python의 dict를 활용해 key lookup을 빠르게 만들었고, TTL은 ExpirationManager를 통해 별도 관리했습니다. 특히 lazy expiration 방식은 구현 난이도 대비 설명력이 좋아 발표용으로도 적합했습니다.
 
-4번. 영속성/확장/문서 담당
+## 2. 프로토콜 담당
 담당 파일
-persistence/rdb.py
-persistence/aof.py
-cluster/router.py
-추가 역할
-테스트 보조
-발표 정리
+- `protocol/resp_parser.py`
+- `protocol/resp_encoder.py`
+
 역할
-RDB 방식 snapshot 저장/복구
-AOF 방식 명령 로그 저장/복구
-서버 재시작 시 데이터 복구 흐름 정리
-cluster/router로 scale-out 구조 설명
-확장성, 복구 전략, 한계점 정리
-AI 활용 회고 정리
+- `RESP 요청 형식 파싱`
+- `바이트 데이터를 Command 객체로 변환`
+- `내부 Response를 RESP 응답 형식으로 인코딩`
+- `잘못된 프로토콜 형식 검증`
+- `Redis 명령 형식을 어떻게 해석하는지 설명`
+
 핵심 책임
-장애 복구
-확장성
-발표 자료 정리
-발표 포인트
-“인메모리 기반이라 서버 종료 시 유실될 수 있으므로 영속성 전략을 고려했다”
-“확장성을 위해 key routing 구조를 설계했다”
-“README를 통해 구현 범위와 테스트 결과를 정리했다”
-구현 평가
-이 부분은 현재 서버 흐름과 완전 통합되기보다는 확장 가능성을 보여주는 구조로 구현되었습니다. RDB는 snapshot save/load, AOF는 append/replay, router는 hash slot 기반 노드 분배라는 개념이 잘 드러납니다. 과제의 Optional 성격에 맞게 “실제 운영형 완성도”보다는 “구조 설계와 원리 구현”에 초점을 둔 점이 적절했습니다.
+- `클라이언트와 서버 사이의 대화 규칙 구현`
+- `요청/응답 번역`
+
+## 3. 저장소/TTL 담당
+담당 파일
+- `storage/engine.py`
+- `storage/in_memory.py`
+- `storage/expiration.py`
+
+역할
+- `실제 key-value 저장`
+- `SET, GET, DEL, EXISTS 구현`
+- `TTL 설정 및 만료 처리`
+- `invalidate 처리`
+- `lazy expiration 로직 구현`
+- `해시 테이블 기반 저장 구조 설명`
+
+핵심 책임
+- `Mini Redis의 핵심 로직`
+- `실제 데이터 저장과 조회`
+- `만료/삭제/무효화 정책`
+
+## 4. 영속성/확장 담당
+담당 파일
+- `persistence/rdb.py`
+- `persistence/aof.py`
+- `cluster/router.py`
+
+
+역할
+- `RDB 방식 snapshot 저장/복구`
+- `AOF 방식 명령 로그 저장/복구`
+- `서버 재시작 시 데이터 복구 흐름 정리`
+- `cluster/router로 scale-out 구조 설명`
+- `확장성, 복구 전략, 한계점 정리`
+
+핵심 책임
+- `장애 복구`
+- `확장성`
 
 ---
 
