@@ -1,4 +1,4 @@
-# Mini Redis
+<img width="1024" height="582" alt="image" src="https://github.com/user-attachments/assets/0427ea63-2a69-47ed-b190-1da64c90fb7b" /># Mini Redis
 
 이번 프로젝트의 목표는 단순히 key-value 저장소를 만드는 것이 아니라, **Redis의 핵심 개념인 해시 테이블 기반 저장, TTL, RESP 프로토콜, TCP 서버 흐름, 영속성 확장 가능성**까지 직접 구현하고 설명할 수 있는 수준까지 도달하는 것이었습니다.
 
@@ -110,12 +110,14 @@
 # 4. 중점 포인트에 대한 답변
 
 ## 해시 테이블 설계 원리, 구현 과정
+<img width="1024" height="582" alt="image" src="https://github.com/user-attachments/assets/86e3bbb2-1004-45b1-ba4c-a24989eb7d24" />
+<img width="1248" height="664" alt="image" src="https://github.com/user-attachments/assets/9f7113ee-411d-4879-840d-4835baba4f80" />
+
 해시 테이블은 key를 넣으면 value를 빠르게 찾기 위한 자료구조입니다.
-key를 기준으로 저장,
-key를 기준으로 바로 조회,
-평균적으로 저장/조회/삭제를 빠르게 한다의 흐름 위주로 설계하였습니다.
-해시 충돌이 났을 때는 chaining 방식을 사용하였습니다.
-chaining은 해시 충돌이 났을 때 한 칸에 하나만 두는 게 아니라, 같은 칸에 여러 값을 연결해서 저장하는 방식입니다.
+key를 기준으로 저장, 해시 함수를 이용하여 key를 index로 변환한 후 해당 인덱스로 배열에서 바로 조회하는 방식입니다.
+자료구조 중 저장/조회/삭제를 레디스에 맞게 가장 적절한 것이 해시 테이블 방식이라고 생각하여 채택하였습니다.
+해시 충돌이 났을 때는 구현과 해당 내용을 이해하기 쉬운 chaining 방식을 사용하였습니다. 해당 방식은 이중 리스트에 튜플로 된 키와 밸류를 넣는 방식으로 구현하였고
+해시 충돌이 났을 때 가장 안쪽 리스트에 여러 값을 연결해서 저장하는 방식입니다.
 
 
 ## 동시성
