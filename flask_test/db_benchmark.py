@@ -224,6 +224,7 @@ def build_summary(samples):
 
     return {
         "count": len(sorted_samples),
+        "total": sum(sorted_samples),
         "avg": statistics.mean(sorted_samples),
         "median": statistics.median(sorted_samples),
         "min": min(sorted_samples),

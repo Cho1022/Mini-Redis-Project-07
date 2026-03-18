@@ -1,4 +1,6 @@
-﻿from __future__ import annotations
+from __future__ import annotations
+
+from asd import HashTable
 
 from src.storage.expiration import ExpirationManager
 
@@ -7,7 +9,7 @@ class InMemoryStore:
     """Hash table based key-value store with lazy expiration."""
 
     def __init__(self) -> None:
-        self._data: dict[str, str] = {}
+        self._data: HashTable[str, str] = HashTable()
         self._expiration = ExpirationManager()
 
     def _evict_if_expired(self, key: str) -> bool:
@@ -61,10 +63,11 @@ class InMemoryStore:
     def snapshot(self) -> tuple[dict[str, str], dict[str, float]]:
         for key in list(self._data.keys()):
             self._evict_if_expired(key)
-        return dict(self._data), self._expiration.snapshot()
+        return dict(self._data.items()), self._expiration.snapshot()
 
     def load(self, data: dict[str, str], expires_at: dict[str, float]) -> None:
-        self._data = {str(key): str(value) for key, value in data.items()}
+        self._data.clear()
+        self._data.update((str(key), str(value)) for key, value in data.items())
         self._expiration.load(expires_at)
         for key in list(self._data.keys()):
             self._evict_if_expired(key)

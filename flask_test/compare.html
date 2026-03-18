@@ -209,7 +209,7 @@
   <div class="wrap">
     <section class="panel">
       <h1>MongoDB vs Redis vs Mini Redis</h1>
-      <p class="sub">SET, GET average time comparison graph</p>
+      <p class="sub">SET, GET total time comparison graph</p>
       <p class="hint">`{i}` is replaced with the current index. Example: `bench:{i}` becomes `bench:0`, `bench:1`...</p>
 
       <div class="controls">
@@ -378,15 +378,15 @@
       const benchmark = data.benchmark;
 
       renderGraph("set", {
-        mongo: benchmark.set.mongo.avg,
-        redis: benchmark.set.redis.avg,
-        mini_redis: benchmark.set.mini_redis.avg,
+        mongo: benchmark.set.mongo.total,
+        redis: benchmark.set.redis.total,
+        mini_redis: benchmark.set.mini_redis.total,
       });
 
       renderGraph("get", {
-        mongo: benchmark.get.mongo.avg,
-        redis: benchmark.get.redis.avg,
-        mini_redis: benchmark.get.mini_redis.avg,
+        mongo: benchmark.get.mongo.total,
+        redis: benchmark.get.redis.total,
+        mini_redis: benchmark.get.mini_redis.total,
       });
     }
 

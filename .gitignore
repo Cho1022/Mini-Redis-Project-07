@@ -27,3 +27,4 @@ data/snapshot.json
 pytest-cache-files-*
 .tmp_env_run/
 .tmp_pytest/
+.dump.rdb
